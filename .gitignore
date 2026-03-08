@@ -1,0 +1,114 @@
+# 环境变量（包含敏感信息）
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.pyc
+*.pyo
+
+# 虚拟环境
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# 日志
+*.log
+logs/
+*.log.*
+
+# 缓存
+/tmp/
+*.cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 企业微信机器人缓存
+/tmp/llm_demo_cache/
+
+# 数据库
+*.db
+*.sqlite
+*.sqlite3
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# OS
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# 测试覆盖率
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# 密钥和证书
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+
+# 文档（内部开发记录）
+docs/
+site/
+
+# 打包文件
+*.zip
+*.tar.gz
+*.rar
+.qb-cache
+
+# 反向文件临时存储
+storage/files/
+node_modules/

@@ -1,0 +1,31 @@
+# ============================================
+# 企业微信智能机器人平台 - 依赖包
+# ============================================
+
+# Web框架
+fastapi==0.119.0
+uvicorn==0.32.1
+
+# 加密和配置
+pycryptodome==3.19.0
+python-dotenv==1.0.0
+pyyaml==6.0.1
+
+# 数据库
+pymysql==1.1.0
+
+# HTTP客户端
+requests==2.31.0
+
+# 异步HTTP客户端
+httpx==0.28.1
+aiohttp==3.9.1
+
+# === Optional Dependencies ===
+
+# Redis (for session caching)
+# redis==5.0.1
+
+# ORM (alternative to raw SQL)
+# sqlalchemy==2.0.23
+# aiomysql==0.2.0

@@ -23,9 +23,10 @@ class BotConfig:
         self,
         bot_key: str,
         bot_id: str,
-        token: str,
-        encoding_aes_key: str,
-        callback_path: str,
+        token: str = "",
+        encoding_aes_key: str = "",
+        callback_path: str = "",
+        secret: str = "",
         name: str = "",
         tool_categories: List[str] = None,
         custom_commands: List[str] = None,
@@ -43,6 +44,7 @@ class BotConfig:
         self.token = token
         self.encoding_aes_key = encoding_aes_key
         self.callback_path = callback_path
+        self.secret = secret
         # 数据库 updated_at，用于配置热更新检测
         self.updated_at = None
         # v2.1: name用于过滤@机器人名称提及
@@ -138,8 +140,8 @@ class BotConfigManager:
         """将数据库行解析为 BotConfig 对象"""
         bot_key = row['bot_key']
 
-        if not all([row.get('bot_id'), row.get('token'), row.get('encoding_aes_key')]):
-            logger.warning(f"机器人 {bot_key} 配置不完整，跳过")
+        if not all([row.get('bot_id'), row.get('secret')]):
+            logger.warning(f"机器人 {bot_key} 配置不完整（需要bot_id和secret），跳过")
             return None
 
         # 解析 JSON 字段
@@ -158,9 +160,10 @@ class BotConfigManager:
         bot_config = BotConfig(
             bot_key=bot_key,
             bot_id=row['bot_id'],
-            token=row['token'],
-            encoding_aes_key=row['encoding_aes_key'],
-            callback_path=row.get('callback_path', f'/weixin/callback/{bot_key}'),
+            token=row.get('token', ''),
+            encoding_aes_key=row.get('encoding_aes_key', ''),
+            callback_path=row.get('callback_path', ''),
+            secret=row.get('secret', ''),
             name=row.get('name', ''),
             tool_categories=[],
             custom_commands=custom_commands,
@@ -333,6 +336,7 @@ class BotConfigManager:
             "token": bot.token,
             "encoding_aes_key": bot.encoding_aes_key,
             "callback_path": bot.callback_path,
+            "secret": bot.secret,
             "name": bot.name,
             "custom_commands": bot.custom_commands,
             "description": bot.description,

@@ -25,7 +25,6 @@ from src.adapters.claude_relay_adapter import (
     ToolUseStart,
     AskUserQuestionEvent,
 )
-from src.utils.database import get_user_email_by_wework_user_id, get_user_name_by_wework_user_id
 from .chat_logger import get_chat_logger
 
 logger = logging.getLogger(__name__)
@@ -367,18 +366,7 @@ class ClaudeRelayOrchestrator:
             raise
 
     def _build_user_context_header(self, user_id: str) -> str:
-        try:
-            email = get_user_email_by_wework_user_id(user_id)
-            name = get_user_name_by_wework_user_id(user_id)
-            parts = [f"user_id={user_id}"]
-            if email:
-                parts.append(f"email={email}")
-            if name:
-                parts.append(f"name={name}")
-            return f"[当前用户] {', '.join(parts)}"
-        except Exception as e:
-            logger.warning(f"[ClaudeRelay] 获取用户信息失败: {e}")
-            return ""
+        return f"[当前用户] user_id={user_id}"
 
     def _enrich_message_with_user_context(self, user_id: str, message: str) -> str:
         header = self._build_user_context_header(user_id)

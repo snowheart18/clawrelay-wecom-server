@@ -1,41 +1,10 @@
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: clawrelay-wecom-mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-clawrelay123}
-      MYSQL_DATABASE: ${DB_DATABASE:-clawrelay_wecom}
-      MYSQL_USER: ${DB_USERNAME:-clawrelay}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-clawrelay123}
-    ports:
-      - "${DB_PORT:-3306}:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
-      - ./sql/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-clawrelay123}"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-
   app:
     build: .
     container_name: clawrelay-wecom-server
     restart: unless-stopped
-    depends_on:
-      mysql:
-        condition: service_healthy
-    environment:
-      - ENVIRONMENT=${ENVIRONMENT:-production}
-      - DB_HOST=mysql
-      - DB_PORT=3306
-      - DB_DATABASE=${DB_DATABASE:-clawrelay_wecom}
-      - DB_USERNAME=${DB_USERNAME:-clawrelay}
-      - DB_PASSWORD=${DB_PASSWORD:-clawrelay123}
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
-volumes:
-  mysql_data:

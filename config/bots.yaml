@@ -1,0 +1,51 @@
+# ============================================
+# ClawRelay WeCom Server - Bot Configuration
+# ============================================
+# Copy this file and fill in your bot credentials.
+# Each bot connects to WeChat Work via WebSocket.
+
+bots:
+  # Bot key (unique identifier, used in logs and session management)
+  default:
+    # [Required] Enterprise WeChat bot credentials
+    bot_id: "YOUR_BOT_ID"
+    secret: "YOUR_BOT_SECRET"
+
+    # [Required] ClawRelay API endpoint
+    relay_url: "http://localhost:50009"
+
+    # [Optional] Bot display name (used to filter @mentions in group chat)
+    name: "AI Assistant"
+
+    # [Optional] Description
+    description: "Default AI assistant"
+
+    # [Optional] Claude working directory
+    working_dir: ""
+
+    # [Optional] Model name (default: claude-sonnet-4-6)
+    model: ""
+
+    # [Optional] System prompt
+    system_prompt: ""
+
+    # [Optional] User whitelist (empty = no restriction)
+    # allowed_users:
+    #   - "user_id_1"
+    #   - "user_id_2"
+
+    # [Optional] Environment variables injected into Claude subprocess
+    # env_vars:
+    #   MY_API_KEY: "xxx"
+
+    # [Optional] Custom command modules
+    # custom_commands:
+    #   - "src.handlers.custom.my_commands"
+
+  # --- Add more bots below ---
+  # sales:
+  #   bot_id: "ANOTHER_BOT_ID"
+  #   secret: "ANOTHER_BOT_SECRET"
+  #   relay_url: "http://localhost:50009"
+  #   name: "Sales Bot"
+  #   description: "Sales team assistant"

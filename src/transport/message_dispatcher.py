@@ -16,7 +16,6 @@ from src.core.claude_relay_orchestrator import ClaudeRelayOrchestrator
 from src.core.session_manager import SessionManager
 from src.handlers.command_handlers import CommandRouter
 from src.utils.weixin_utils import ImageUtils, FileUtils
-from src.utils.database import get_user_name_by_wework_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -361,7 +360,7 @@ class MessageDispatcher:
 
     async def _handle_enter_chat(self, req_id: str, body: dict, user_id: str):
         """处理进入会话事件，回复欢迎语"""
-        user_name = get_user_name_by_wework_user_id(user_id) or user_id
+        user_name = user_id
         welcome = f"你好 {user_name}！我是AI助手，有什么可以帮您的吗？"
 
         payload = {

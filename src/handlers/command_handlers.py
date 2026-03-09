@@ -8,7 +8,6 @@
 import logging
 from typing import Dict
 from src.utils.weixin_utils import MessageBuilder, TemplateCardBuilder
-from src.utils.database import get_user_name_by_wework_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +61,7 @@ class HelloCommandHandler(CommandHandler):
     """Hello命令处理器"""
 
     def handle(self, cmd: str, stream_id: str, user_id: str) -> tuple[str, None]:
-        user_name = get_user_name_by_wework_user_id(user_id)
-        if user_name:
-            reply_content = f"欢迎你：{user_name}"
-        else:
-            reply_content = "欢迎你！很高兴为你服务。"
+        reply_content = f"欢迎你 {user_id}！很高兴为你服务。"
         return MessageBuilder.text(stream_id, reply_content, finish=True), None
 
 
@@ -270,7 +265,7 @@ class WelcomeCardCommandHandler(CommandHandler):
     """欢迎卡片命令处理器"""
 
     def handle(self, cmd: str, stream_id: str, user_id: str) -> tuple[str, None]:
-        user_name = get_user_name_by_wework_user_id(user_id) or "朋友"
+        user_name = user_id or "朋友"
         template_card = TemplateCardBuilder.text_notice(
             task_id=f"welcome_{stream_id}",
             title=f"👋 欢迎 {user_name}",

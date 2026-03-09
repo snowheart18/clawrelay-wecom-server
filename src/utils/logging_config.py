@@ -45,34 +45,10 @@ class BusinessLogFilter(logging.Filter):
 
     # 必须隐藏的技术细节
     MUST_HIDE = [
-        # 加密解密
-        '开始解密消息',
-        '消息解密成功',
-        '开始加密消息',
-        '消息加密成功',
-
-        # 流式刷新噪音
-        '收到流式消息刷新请求',
-        '当前StreamManager',
-        '未找到 stream_id',
-        '消息处理返回None',
-        '[流式刷新]',
-        '流式消息继续',
-        '[StreamManager]',
-
-        # 路由处理
-        '处理消息请求',
-        '路由消息类型',
-
         # 数据库
         '数据库连接成功',
 
         # 初始化细节
-        'MessageHandlerRouter初始化',
-        'TextMessageHandler初始化',
-        '机器人实例初始化成功',
-        '成功初始化机器人',
-        '机器人管理器初始化完成',
         '使用默认命令集',
 
         # 其他技术日志

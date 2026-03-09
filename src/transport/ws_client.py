@@ -93,7 +93,7 @@ class WsClient:
         if not req_id:
             raise ValueError("payload must have headers.req_id")
 
-        future: asyncio.Future = asyncio.get_event_loop().create_future()
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending_requests[req_id] = future
 
         try:
@@ -131,7 +131,7 @@ class WsClient:
             },
         }
 
-        future: asyncio.Future = asyncio.get_event_loop().create_future()
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending_requests[req_id] = future
 
         raw = json.dumps(payload, ensure_ascii=False)

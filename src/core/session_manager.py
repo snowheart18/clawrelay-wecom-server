@@ -26,7 +26,7 @@ def async_wrap(func):
     """将同步函数包装为异步函数"""
     @wraps(func)
     async def wrapper(*args, **kwargs):
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
     return wrapper
 

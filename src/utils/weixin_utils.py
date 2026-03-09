@@ -518,12 +518,12 @@ class FileUtils:
     MAX_FILE_SIZE = int(os.getenv('WEIXIN_MAX_FILE_SIZE', str(20 * 1024 * 1024)))
 
     @staticmethod
-    async def download_and_decrypt(url: str, encoding_aes_key: str, timeout: int = 30) -> tuple:
+    async def download_and_decrypt(url: str, aes_key: str, timeout: int = 30) -> tuple:
         """下载企业微信加密文件并解密为原始字节
 
         Args:
             url: 企业微信文件下载 URL（加密的，5分钟内有效）
-            encoding_aes_key: 机器人的 EncodingAESKey（43字符）
+            aes_key: 消息中的 aeskey（Base64编码，用于 AES-256-CBC 解密）
             timeout: 下载超时时间（秒）
 
         Returns:
@@ -564,7 +564,7 @@ class FileUtils:
         )
 
         # 2. AES-256-CBC 解密
-        key = base64.b64decode(encoding_aes_key + "=")
+        key = base64.b64decode(aes_key + "=")
         iv = key[:16]
         cipher = AES.new(key, AES.MODE_CBC, iv)
         decrypted = cipher.decrypt(encrypted_data)
@@ -677,14 +677,14 @@ class ImageUtils:
     @staticmethod
     async def download_and_decrypt_to_base64(
         url: str,
-        encoding_aes_key: str,
+        aes_key: str,
         timeout: int = 10,
     ) -> str:
         """下载企业微信加密图片并解密为 base64 data URI
 
         Args:
             url: 企业微信图片下载 URL
-            encoding_aes_key: 机器人的 EncodingAESKey（43字符）
+            aes_key: 消息中的 aeskey（Base64编码，用于 AES-256-CBC 解密）
             timeout: 下载超时时间（秒）
 
         Returns:
@@ -708,7 +708,7 @@ class ImageUtils:
         logger.info(f"[ImageUtils] 下载加密图片完成: size={len(encrypted_data)} bytes")
 
         # 2. AES-256-CBC 解密
-        key = base64.b64decode(encoding_aes_key + "=")
+        key = base64.b64decode(aes_key + "=")
         iv = key[:16]
         cipher = AES.new(key, AES.MODE_CBC, iv)
         decrypted = cipher.decrypt(encrypted_data)

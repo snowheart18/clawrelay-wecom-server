@@ -23,9 +23,6 @@ class BotConfig:
         self,
         bot_key: str,
         bot_id: str,
-        token: str = "",
-        encoding_aes_key: str = "",
-        callback_path: str = "",
         secret: str = "",
         name: str = "",
         tool_categories: List[str] = None,
@@ -41,9 +38,6 @@ class BotConfig:
     ):
         self.bot_key = bot_key
         self.bot_id = bot_id
-        self.token = token
-        self.encoding_aes_key = encoding_aes_key
-        self.callback_path = callback_path
         self.secret = secret
         # 数据库 updated_at，用于配置热更新检测
         self.updated_at = None
@@ -73,7 +67,6 @@ class BotConfig:
         return (
             f"BotConfig(bot_key='{self.bot_key}', "
             f"name='{self.name}', "
-            f"callback_path='{self.callback_path}', "
             f"description='{self.description}')"
         )
 
@@ -160,9 +153,6 @@ class BotConfigManager:
         bot_config = BotConfig(
             bot_key=bot_key,
             bot_id=row['bot_id'],
-            token=row.get('token', ''),
-            encoding_aes_key=row.get('encoding_aes_key', ''),
-            callback_path=row.get('callback_path', ''),
             secret=row.get('secret', ''),
             name=row.get('name', ''),
             tool_categories=[],
@@ -242,70 +232,13 @@ class BotConfigManager:
         finally:
             connection.close()
 
-    def load_bot_by_path(self, callback_path: str) -> Optional[BotConfig]:
-        """从数据库按回调路径加载单个机器人配置（热加载）"""
-        from src.utils.database import get_db_connection
-
-        connection = get_db_connection()
-        if not connection:
-            return None
-
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT * FROM robot_bots WHERE callback_path = %s AND enabled = 1",
-                    (callback_path,)
-                )
-                row = cursor.fetchone()
-
-            if not row:
-                return None
-
-            bot_config = self._parse_bot_row(row)
-            if not bot_config:
-                return None
-
-            # 加载该机器人的工具权限
-            try:
-                with connection.cursor() as cursor:
-                    cursor.execute("""
-                        SELECT rtp.tool_category
-                        FROM robot_bot_tool_permissions rtp
-                        WHERE rtp.bot_id = %s AND rtp.enabled = 1
-                    """, (row['id'],))
-                    perm_rows = cursor.fetchall()
-                for perm_row in perm_rows:
-                    bot_config.tool_categories.append(perm_row['tool_category'])
-            except Exception as e:
-                logger.warning(f"加载机器人 {bot_config.bot_key} 工具权限失败(非致命): {e}")
-
-            self.bots[bot_config.bot_key] = bot_config
-            return bot_config
-
-        except Exception as e:
-            logger.error(f"热加载机器人配置失败: {e}")
-            return None
-        finally:
-            connection.close()
-
     def get_bot(self, bot_key: str) -> Optional[BotConfig]:
         """获取指定机器人的配置"""
         return self.bots.get(bot_key)
 
-    def get_bot_by_path(self, callback_path: str) -> Optional[BotConfig]:
-        """根据回调路径获取机器人配置"""
-        for bot_config in self.bots.values():
-            if bot_config.callback_path == callback_path:
-                return bot_config
-        return None
-
     def get_all_bots(self) -> Dict[str, BotConfig]:
         """获取所有机器人配置"""
         return self.bots
-
-    def list_callback_paths(self) -> List[str]:
-        """列出所有回调路径"""
-        return [bot.callback_path for bot in self.bots.values()]
 
     @staticmethod
     def get_bot_config(bot_key: str) -> Dict:
@@ -333,9 +266,6 @@ class BotConfigManager:
         # 转换为字典格式(兼容v2.0)
         return {
             "bot_id": bot.bot_id,
-            "token": bot.token,
-            "encoding_aes_key": bot.encoding_aes_key,
-            "callback_path": bot.callback_path,
             "secret": bot.secret,
             "name": bot.name,
             "custom_commands": bot.custom_commands,

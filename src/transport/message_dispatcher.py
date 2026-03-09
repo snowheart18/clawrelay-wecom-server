@@ -153,6 +153,29 @@ class MessageDispatcher:
                 await self._reply_text(req_id, "当前没有正在运行的任务。", finish=True)
             return
 
+        # 检查内置/自定义命令
+        handler = self.command_router.handlers.get(content) or self.command_router.handlers.get(normalized)
+        if handler:
+            stream_id = uuid.uuid4().hex[:12]
+            try:
+                msg_json, _ = handler.handle(content, stream_id, user_id)
+                # 命令处理器返回的是 MessageBuilder 格式的 JSON 字符串
+                import json as _json
+                msg_data = _json.loads(msg_json)
+                # 提取文本内容通过流式回复发送
+                if msg_data.get("msgtype") == "stream":
+                    text_content = msg_data.get("stream", {}).get("content", "")
+                elif msg_data.get("msgtype") == "template_card":
+                    # 模板卡片暂不支持通过流式回复，回退为文本提示
+                    text_content = "模板卡片命令暂不支持，请使用其他命令。"
+                else:
+                    text_content = str(msg_data)
+                await self._reply_stream(req_id, stream_id, text_content, finish=True)
+            except Exception as e:
+                logger.error("[Dispatcher:%s] 命令处理失败: %s", self.bot_key, e, exc_info=True)
+                await self._reply_text(req_id, f"命令处理出错：{e}", finish=True)
+            return
+
         # 调用AI处理，带节流流式推送
         stream_id = uuid.uuid4().hex[:12]
         log_context = {

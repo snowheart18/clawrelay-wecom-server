@@ -18,7 +18,7 @@
 你需要准备：
 
 1. **企业微信智能机器人**的 `bot_id` 和 `secret`（从企业微信管理后台 → 应用管理 → 智能机器人 获取）
-2. **[clawrelay-api](https://github.com/anthropics/clawrelay-api)** 运行在本机（默认端口 50009）
+2. **[clawrelay-api](https://github.com/roodkcab/clawrelay-api)** 运行在本机（默认端口 50009）
 
 然后：
 

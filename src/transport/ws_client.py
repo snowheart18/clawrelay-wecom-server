@@ -7,13 +7,19 @@ WebSocket长连接客户端
 - 心跳 ping (30s间隔)
 - 接收消息分发 (aibot_msg_callback / aibot_event_callback)
 - 断线指数退避重连
+- 自动检测 https_proxy 环境变量，通过 HTTP CONNECT 隧道连接
 """
 
 import asyncio
+import base64
 import json
 import logging
+import os
+import socket
+import ssl
 import uuid
 from typing import Callable, Awaitable, Dict, Optional
+from urllib.parse import urlparse
 
 import websockets
 from websockets.asyncio.client import ClientConnection
@@ -109,15 +115,58 @@ class WsClient:
     # ---- 内部方法 ----
 
     async def _connect(self):
-        """建立WebSocket连接"""
-        logger.info("[WsClient:%s] 正在连接 %s ...", self.bot_key, WS_URL)
+        """建立WebSocket连接，自动检测并使用 HTTP 代理"""
+        parsed = urlparse(WS_URL)
+        target_host = parsed.hostname
+        target_port = parsed.port or 443
+
+        proxy_url = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY")
+        extra_kwargs = {}
+
+        if proxy_url:
+            logger.info("[WsClient:%s] 通过代理连接 %s ...", self.bot_key, WS_URL)
+            sock = self._create_proxy_tunnel(proxy_url, target_host, target_port)
+            sock.setblocking(False)
+            extra_kwargs["sock"] = sock
+            extra_kwargs["ssl"] = ssl.create_default_context()
+            extra_kwargs["server_hostname"] = target_host
+        else:
+            logger.info("[WsClient:%s] 正在连接 %s ...", self.bot_key, WS_URL)
+
         self._ws = await websockets.connect(
             WS_URL,
             ping_interval=None,  # 我们自己管理心跳
             ping_timeout=None,
             close_timeout=5,
+            **extra_kwargs,
         )
         logger.info("[WsClient:%s] WebSocket连接建立成功", self.bot_key)
+
+    @staticmethod
+    def _create_proxy_tunnel(proxy_url: str, target_host: str, target_port: int) -> socket.socket:
+        """通过 HTTP CONNECT 建立代理隧道"""
+        parsed = urlparse(proxy_url)
+        sock = socket.create_connection((parsed.hostname, parsed.port), timeout=10)
+
+        connect_req = (
+            f"CONNECT {target_host}:{target_port} HTTP/1.1\r\n"
+            f"Host: {target_host}:{target_port}\r\n"
+        )
+        if parsed.username:
+            password = parsed.password or ""
+            creds = base64.b64encode(f"{parsed.username}:{password}".encode()).decode()
+            connect_req += f"Proxy-Authorization: Basic {creds}\r\n"
+        connect_req += "\r\n"
+
+        sock.sendall(connect_req.encode())
+        response = sock.recv(4096).decode()
+        status_line = response.split("\r\n")[0]
+
+        if "200" not in status_line:
+            sock.close()
+            raise ConnectionError(f"Proxy CONNECT failed: {status_line}")
+
+        return sock
 
     async def _subscribe(self):
         """发送订阅请求"""

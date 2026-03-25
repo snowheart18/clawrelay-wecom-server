@@ -42,6 +42,18 @@ def _friendly_error(e: Exception) -> str:
 # 节流间隔(秒)
 STREAM_THROTTLE_INTERVAL = 0.3
 
+# 长时间运行阈值(秒)，超过后切换为完成提醒文案
+_LONG_RUNNING_THRESHOLD = 60
+
+
+def _build_running_indicator(start_time: float) -> str:
+    """构建动态运行指示器，省略号随时间循环变化（. → .. → ...）"""
+    elapsed = time.monotonic() - start_time
+    if elapsed >= _LONG_RUNNING_THRESHOLD:
+        return "\n\n⏳ 正在运行中，完成后会通知您🔔"
+    dots = "." * (int(time.time()) % 3 + 1)
+    return f"\n\n⏳ 正在运行中{dots}"
+
 
 class MessageDispatcher:
     """WebSocket消息分发与回复"""
@@ -420,25 +432,45 @@ class MessageDispatcher:
             'last_pushed_text': "",
             'last_push_time': 0.0,
             'throttle_task': None,
+            'start_time': time.monotonic(),
+            'long_running_notified': False,
         }
         push_lock = asyncio.Lock()
 
+        async def _push_with_indicator(text: str, finish: bool):
+            """推送内容，未完成时追加运行指示器"""
+            if finish or not text:
+                await self._reply_stream(req_id, stream_id, text, finish=finish)
+            else:
+                display_text = text + _build_running_indicator(state['start_time'])
+                await self._reply_stream(req_id, stream_id, display_text, finish=False)
+
         async def on_stream_delta(accumulated_text: str, finish: bool):
             if finish:
-                # 完成时立即推送最终内容
+                # 完成时立即推送最终内容（不带指示器）
                 if state['throttle_task'] and not state['throttle_task'].done():
                     state['throttle_task'].cancel()
                 await self._reply_stream(req_id, stream_id, accumulated_text, finish=True)
                 state['last_pushed_text'] = accumulated_text
                 return
 
+            # 检测是否跨过长时间运行阈值，需要强制推送一次切换文案
+            elapsed_from_start = time.monotonic() - state['start_time']
+            force_push = (
+                not state['long_running_notified']
+                and elapsed_from_start >= _LONG_RUNNING_THRESHOLD
+                and accumulated_text
+            )
+            if force_push:
+                state['long_running_notified'] = True
+
             # 节流
             now = time.monotonic()
             elapsed = now - state['last_push_time']
 
-            if elapsed >= STREAM_THROTTLE_INTERVAL and accumulated_text != state['last_pushed_text']:
+            if (elapsed >= STREAM_THROTTLE_INTERVAL and accumulated_text != state['last_pushed_text']) or force_push:
                 async with push_lock:
-                    await self._reply_stream(req_id, stream_id, accumulated_text, finish=False)
+                    await _push_with_indicator(accumulated_text, finish=False)
                     state['last_pushed_text'] = accumulated_text
                     state['last_push_time'] = time.monotonic()
             elif state['throttle_task'] is None or state['throttle_task'].done():
@@ -448,7 +480,7 @@ class MessageDispatcher:
                     await asyncio.sleep(STREAM_THROTTLE_INTERVAL - elapsed)
                     async with push_lock:
                         if captured_text != state['last_pushed_text']:
-                            await self._reply_stream(req_id, stream_id, captured_text, finish=False)
+                            await _push_with_indicator(captured_text, finish=False)
                             state['last_pushed_text'] = captured_text
                             state['last_push_time'] = time.monotonic()
 

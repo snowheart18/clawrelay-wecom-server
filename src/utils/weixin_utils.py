@@ -514,6 +514,7 @@ class FileUtils:
         '.py', '.js', '.ts', '.go', '.java', '.html', '.css', '.sql', '.sh', '.log',
         '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
         '.zip',
+        '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg',
     }
     MAX_FILE_SIZE = int(os.getenv('WEIXIN_MAX_FILE_SIZE', str(20 * 1024 * 1024)))
 
@@ -645,6 +646,9 @@ class FileUtils:
         '.ppt': 'application/vnd.ms-powerpoint',
         '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         '.zip': 'application/zip',
+        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif', '.bmp': 'image/bmp', '.webp': 'image/webp',
+        '.svg': 'image/svg+xml',
     }
 
     @staticmethod

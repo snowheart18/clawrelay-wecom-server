@@ -516,7 +516,7 @@ class FileUtils:
         '.zip',
         '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg',
     }
-    MAX_FILE_SIZE = int(os.getenv('WEIXIN_MAX_FILE_SIZE', str(20 * 1024 * 1024)))
+    MAX_FILE_SIZE = int(os.getenv('WEIXIN_MAX_FILE_SIZE', str(100 * 1024 * 1024)))
 
     @staticmethod
     async def download_and_decrypt(url: str, aes_key: str, timeout: int = 30, key_format: str = "auto") -> tuple:
@@ -803,6 +803,35 @@ class ImageUtils:
         image_base64 = base64.b64encode(image_data).decode('utf-8')
         image_md5 = hashlib.md5(image_data).hexdigest()
 
+        return (image_base64, image_md5)
+
+    @staticmethod
+    async def async_download_and_encode(url: str, timeout: int = 5) -> tuple[str, str]:
+        """异步下载图片并转换为base64和MD5（不阻塞事件循环）
+
+        Args:
+            url: 图片URL
+            timeout: 超时时间（秒）
+
+        Returns:
+            (base64编码, MD5值) 元组
+
+        Raises:
+            Exception: 下载失败时抛出异常
+        """
+        import base64
+        import hashlib
+        import aiohttp
+
+        timeout_cfg = aiohttp.ClientTimeout(total=timeout)
+        async with aiohttp.ClientSession(timeout=timeout_cfg) as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    raise Exception(f"下载图片失败，状态码: {response.status}")
+                image_data = await response.read()
+
+        image_base64 = base64.b64encode(image_data).decode('utf-8')
+        image_md5 = hashlib.md5(image_data).hexdigest()
         return (image_base64, image_md5)
 
     @staticmethod

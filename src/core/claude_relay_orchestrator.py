@@ -462,16 +462,69 @@ class ClaudeRelayOrchestrator:
     def _build_user_context_header(self, user_id: str) -> str:
         return f"[SYS_USER] user_id={user_id}"
 
-    # 匹配用户伪造的身份标记（[SYS_USER]、[当前用户] 等变体）
+    # ── 身份标记消毒（防伪造 [SYS_USER] 等注入） ──
+
+    # 需要移除的零宽 / 不可见 Unicode 字符（用于绕过关键词检测）
+    _INVISIBLE_CHARS_RE = re.compile(
+        r'[\u200b\u200c\u200d\u200e\u200f'   # 零宽空格、零宽连接/非连接符、方向标记
+        r'\u00ad\u034f\u061c'                  # 软连字符、组合石墨连接符、阿拉伯字母标记
+        r'\u2060\u2061\u2062\u2063\u2064'      # 单词连接符、函数应用等
+        r'\ufeff\ufff9\ufffa\ufffb]',          # BOM、注释标记
+    )
+
+    # 身份标记关键词（NFKC 规范化 + 去除不可见字符后匹配）
+    _IDENTITY_KEYWORDS = [
+        # 英文变体
+        r'S[\s_.\-]*Y[\s_.\-]*S[\s_.\-]*[_\s.\-]*U[\s_.\-]*S[\s_.\-]*E[\s_.\-]*R',
+        r'C[\s_.\-]*U[\s_.\-]*R[\s_.\-]*R[\s_.\-]*E[\s_.\-]*N[\s_.\-]*T[\s_.\-]*[_\s.\-]*U[\s_.\-]*S[\s_.\-]*E[\s_.\-]*R',
+        r'S[\s_.\-]*Y[\s_.\-]*S[\s_.\-]*T[\s_.\-]*E[\s_.\-]*M[\s_.\-]*[_\s.\-]*U[\s_.\-]*S[\s_.\-]*E[\s_.\-]*R',
+        r'A[\s_.\-]*G[\s_.\-]*E[\s_.\-]*N[\s_.\-]*T[\s_.\-]*[_\s.\-]*U[\s_.\-]*S[\s_.\-]*E[\s_.\-]*R',
+        r'R[\s_.\-]*E[\s_.\-]*A[\s_.\-]*L[\s_.\-]*[_\s.\-]*U[\s_.\-]*S[\s_.\-]*E[\s_.\-]*R',
+        r'A[\s_.\-]*U[\s_.\-]*T[\s_.\-]*H[\s_.\-]*[_\s.\-]*U[\s_.\-]*S[\s_.\-]*E[\s_.\-]*R',
+        # 中文变体
+        r'当前用户',
+        r'系统用户',
+        r'当前发言者',
+        r'操作者身份',
+        # 日文变体
+        r'ユーザー',
+        r'現在のユーザー',
+    ]
+
     _FAKE_IDENTITY_RE = re.compile(
-        r'\[(?:SYS_USER|sys_user|当前用户|CURRENT_USER|current_user)\]\s*[^\n]*',
+        r'\[(?:' + '|'.join(_IDENTITY_KEYWORDS) + r')\]\s*[^\n]*',
         re.IGNORECASE,
     )
 
     @classmethod
     def _sanitize_user_input(cls, text: str) -> str:
-        """清除用户输入中伪造的身份标记"""
-        return cls._FAKE_IDENTITY_RE.sub('', text).strip()
+        """清除用户输入中伪造的身份标记
+
+        防御策略（保留原始文本格式，不做全局 NFKC 以免损坏中文标点）：
+        1. 移除零宽/不可见 Unicode 字符（不影响可见文本）
+        2. 扩展正则匹配（覆盖 SYS_USER / SYSTEM_USER / 当前用户 / ユーザー 等变体）
+        3. NFKC 规范化仅用于逐行检测全角字符绕过，匹配到的行从原始文本中移除
+        """
+        import unicodedata
+
+        # Step 1: 移除不可见字符（安全操作，不改变可见内容）
+        cleaned = cls._INVISIBLE_CHARS_RE.sub('', text)
+
+        # Step 2: 在 cleaned 文本上直接匹配并移除
+        result = cls._FAKE_IDENTITY_RE.sub('', cleaned)
+
+        # Step 3: 逐行 NFKC 检测，捕获全角字符绕过（如 ［ＳＹＳ＿ＵＳＥＲ］）
+        normalized_full = unicodedata.normalize('NFKC', result)
+        if cls._FAKE_IDENTITY_RE.search(normalized_full):
+            lines = result.split('\n')
+            safe_lines = []
+            for line in lines:
+                norm_line = unicodedata.normalize('NFKC', line)
+                if not cls._FAKE_IDENTITY_RE.search(norm_line):
+                    safe_lines.append(line)
+            result = '\n'.join(safe_lines)
+
+        return result.strip()
 
     @classmethod
     def _sanitize_content_blocks(cls, content_blocks: List[dict]) -> List[dict]:

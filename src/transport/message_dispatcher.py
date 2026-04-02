@@ -13,6 +13,7 @@ import uuid
 from config.bot_config import BotConfig
 from src.transport.ws_client import WsClient
 from src.core.claude_relay_orchestrator import ClaudeRelayOrchestrator
+from src.core.concurrency import run_with_limit
 from src.core.session_manager import SessionManager
 from src.handlers.command_handlers import CommandRouter
 from src.utils.weixin_utils import ImageUtils, FileUtils
@@ -212,6 +213,16 @@ class MessageDispatcher:
                 await self._reply_text(req_id, f"命令处理出错：{e}", finish=True)
             return
 
+        # 检查引用消息（quote）
+        quote = body.get("quote")
+        if quote:
+            handled = await self._handle_quote_in_text(
+                req_id, user_id, session_key, chattype,
+                body.get("chatid", ""), content, quote,
+            )
+            if handled:
+                return
+
         # 调用AI处理，带节流流式推送
         stream_id = uuid.uuid4().hex[:12]
         log_context = {
@@ -232,6 +243,207 @@ class MessageDispatcher:
                 on_stream_delta=on_stream_delta,
             ),
         )
+
+    async def _handle_quote_in_text(
+        self, req_id: str, user_id: str,
+        session_key: str, chattype: str, chatid: str,
+        message_text: str, quote: dict,
+    ) -> bool:
+        """处理文本消息中的引用（quote）内容
+
+        Returns:
+            True 表示已接管处理（调用方应 return），False 表示降级为普通文本
+        """
+        quote_type = quote.get("msgtype", "")
+        logger.info(
+            "[Dispatcher:%s] 引用消息: type=%s, user=%s, text=\"%s\"",
+            self.bot_key, quote_type, user_id, message_text[:50],
+        )
+
+        # ---- 引用图片 → 多模态 ----
+        if quote_type == "image":
+            image_info = quote.get("image", {})
+            url = image_info.get("url", "")
+            aeskey = image_info.get("aeskey", "")
+            if url and aeskey:
+                try:
+                    data_uri = await ImageUtils.download_and_decrypt_to_base64(
+                        url, aeskey, key_format="auto",
+                    )
+                    content_blocks = [
+                        {"type": "text", "text": f"[引用了一张图片]\n\n{message_text}"},
+                        {"type": "image_url", "image_url": {"url": data_uri}},
+                    ]
+                    stream_id = uuid.uuid4().hex[:12]
+                    log_context = {'chat_type': chattype, 'chat_id': chatid, 'message_type': 'quote_image'}
+                    on_stream_delta = self._make_stream_delta_callback(req_id, stream_id)
+                    await self._run_with_task_registry(
+                        req_id, stream_id, session_key,
+                        self.orchestrator.handle_multimodal_message(
+                            user_id=user_id, content_blocks=content_blocks,
+                            stream_id=stream_id, session_key=session_key,
+                            log_context=log_context, on_stream_delta=on_stream_delta,
+                        ),
+                    )
+                    return True
+                except Exception as e:
+                    logger.warning("[Dispatcher:%s] 引用图片下载失败: %s", self.bot_key, e)
+                    await self._reply_text(req_id, "引用图片处理失败，请重试。", finish=True)
+                    return True
+
+        # ---- 引用文件 → 文件分析 ----
+        elif quote_type == "file":
+            file_info = quote.get("file", {})
+            url = file_info.get("url", "")
+            aeskey = file_info.get("aeskey", "")
+            filename = file_info.get("filename", "")
+            if url and aeskey:
+                try:
+                    file_bytes, detected_filename = await FileUtils.download_and_decrypt(url, aeskey)
+                    final_filename = filename or detected_filename or FileUtils.detect_filename_from_bytes(file_bytes)
+                    file_part = FileUtils.encode_for_relay(file_bytes, final_filename)
+                    combined_message = f"[引用了文件: {final_filename}]\n\n{message_text}"
+                    stream_id = uuid.uuid4().hex[:12]
+                    log_context = {
+                        'chat_type': chattype, 'chat_id': chatid, 'message_type': 'quote_file',
+                        'file_info': [{'filename': final_filename}],
+                    }
+                    on_stream_delta = self._make_stream_delta_callback(req_id, stream_id)
+                    await self._run_with_task_registry(
+                        req_id, stream_id, session_key,
+                        self.orchestrator.handle_file_message(
+                            user_id=user_id, message=combined_message,
+                            files=[file_part], stream_id=stream_id,
+                            session_key=session_key, log_context=log_context,
+                            on_stream_delta=on_stream_delta,
+                        ),
+                    )
+                    return True
+                except Exception as e:
+                    logger.warning("[Dispatcher:%s] 引用文件下载失败: %s", self.bot_key, e)
+                    await self._reply_text(req_id, "引用文件处理失败，请重试。", finish=True)
+                    return True
+
+        # ---- 引用文本 → 拼接上下文 ----
+        elif quote_type == "text":
+            quote_content = quote.get("text", {}).get("content", "")
+            if quote_content:
+                combined = f"[引用消息: {quote_content}]\n\n{message_text}"
+                stream_id = uuid.uuid4().hex[:12]
+                log_context = {'chat_type': chattype, 'chat_id': chatid, 'message_type': 'quote_text'}
+                on_stream_delta = self._make_stream_delta_callback(req_id, stream_id)
+                await self._run_with_task_registry(
+                    req_id, stream_id, session_key,
+                    self.orchestrator.handle_text_message(
+                        user_id=user_id, message=combined,
+                        stream_id=stream_id, session_key=session_key,
+                        log_context=log_context, on_stream_delta=on_stream_delta,
+                    ),
+                )
+                return True
+
+        # ---- 引用语音 → 拼接文本 ----
+        elif quote_type == "voice":
+            voice_content = quote.get("voice", {}).get("content", "")
+            if voice_content:
+                combined = f"[引用语音: {voice_content}]\n\n{message_text}"
+                stream_id = uuid.uuid4().hex[:12]
+                log_context = {'chat_type': chattype, 'chat_id': chatid, 'message_type': 'quote_voice'}
+                on_stream_delta = self._make_stream_delta_callback(req_id, stream_id)
+                await self._run_with_task_registry(
+                    req_id, stream_id, session_key,
+                    self.orchestrator.handle_text_message(
+                        user_id=user_id, message=combined,
+                        stream_id=stream_id, session_key=session_key,
+                        log_context=log_context, on_stream_delta=on_stream_delta,
+                    ),
+                )
+                return True
+
+        # ---- 引用混合消息 → 尝试提取图片+文本 ----
+        elif quote_type == "mixed":
+            content_blocks = await self._try_parse_mixed_quote(quote, message_text)
+            if content_blocks:
+                stream_id = uuid.uuid4().hex[:12]
+                log_context = {'chat_type': chattype, 'chat_id': chatid, 'message_type': 'quote_mixed'}
+                on_stream_delta = self._make_stream_delta_callback(req_id, stream_id)
+                await self._run_with_task_registry(
+                    req_id, stream_id, session_key,
+                    self.orchestrator.handle_multimodal_message(
+                        user_id=user_id, content_blocks=content_blocks,
+                        stream_id=stream_id, session_key=session_key,
+                        log_context=log_context, on_stream_delta=on_stream_delta,
+                    ),
+                )
+                return True
+            # 降级：提取文本部分
+            items = quote.get("mixed", {}).get("msg_item", [])
+            parts = []
+            for item in items:
+                if item.get("msgtype") == "text":
+                    parts.append(item.get("text", {}).get("content", ""))
+                elif item.get("msgtype") == "image":
+                    parts.append("[图片]")
+            if parts:
+                combined = f"[引用消息: {' '.join(parts)}]\n\n{message_text}"
+                stream_id = uuid.uuid4().hex[:12]
+                log_context = {'chat_type': chattype, 'chat_id': chatid, 'message_type': 'quote_mixed_text'}
+                on_stream_delta = self._make_stream_delta_callback(req_id, stream_id)
+                await self._run_with_task_registry(
+                    req_id, stream_id, session_key,
+                    self.orchestrator.handle_text_message(
+                        user_id=user_id, message=combined,
+                        stream_id=stream_id, session_key=session_key,
+                        log_context=log_context, on_stream_delta=on_stream_delta,
+                    ),
+                )
+                return True
+
+        # 降级：无法处理的引用类型，走普通文本
+        logger.info("[Dispatcher:%s] 引用消息降级为文本: type=%s", self.bot_key, quote_type)
+        return False
+
+    async def _try_parse_mixed_quote(self, quote: dict, user_text: str):
+        """尝试解析混合引用消息中的图片，返回 content_blocks 或 None"""
+        items = quote.get("mixed", {}).get("msg_item", [])
+        if not items:
+            return None
+
+        content_blocks = []
+        has_image = False
+
+        for item in items:
+            item_type = item.get("msgtype", "")
+            if item_type == "text":
+                text = item.get("text", {}).get("content", "")
+                if text:
+                    content_blocks.append({"type": "text", "text": text})
+            elif item_type == "image":
+                image_info = item.get("image", {})
+                url = image_info.get("url", "")
+                aeskey = image_info.get("aeskey", "")
+                if url and aeskey:
+                    try:
+                        data_uri = await ImageUtils.download_and_decrypt_to_base64(
+                            url, aeskey, key_format="auto",
+                        )
+                        content_blocks.append(
+                            {"type": "image_url", "image_url": {"url": data_uri}}
+                        )
+                        has_image = True
+                    except Exception as e:
+                        logger.warning("[Dispatcher:%s] 混合引用图片下载失败: %s", self.bot_key, e)
+                        content_blocks.append({"type": "text", "text": "[图片加载失败]"})
+                else:
+                    content_blocks.append({"type": "text", "text": "[图片]"})
+
+        if not has_image:
+            return None
+
+        if user_text:
+            content_blocks.append({"type": "text", "text": user_text})
+
+        return content_blocks
 
     async def _handle_image(self, req_id: str, body: dict, user_id: str, session_key: str, chattype: str):
         """处理图片消息"""
@@ -295,9 +507,6 @@ class MessageDispatcher:
             file_bytes, header_filename = await FileUtils.download_and_decrypt(file_url, aeskey)
             if not file_name:
                 file_name = header_filename or FileUtils.detect_filename_from_bytes(file_bytes)
-            if not FileUtils.is_allowed(file_name):
-                await self._reply_text(req_id, f"不支持的文件类型: {file_name}", finish=True)
-                return
             file_data = FileUtils.encode_for_relay(file_bytes, file_name)
         except Exception as e:
             logger.error("[Dispatcher:%s] 文件下载解密失败: %s", self.bot_key, e)
@@ -499,7 +708,7 @@ class MessageDispatcher:
         """
         from src.core.task_registry import get_task_registry
 
-        inner_task = asyncio.create_task(coro)
+        inner_task = asyncio.create_task(run_with_limit(coro))
         task_key = f"{self.bot_key}:{session_key}"
         get_task_registry().register(task_key, inner_task, stream_id, req_id=req_id)
 

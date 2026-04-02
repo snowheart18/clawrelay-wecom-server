@@ -115,3 +115,6 @@ site/
 # 反向文件临时存储
 storage/files/
 node_modules/
+
+# Claude Code 自定义命令
+.claude/commands/
